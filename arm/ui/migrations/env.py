@@ -11,18 +11,21 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-fileConfig(config.config_file_name)
-logger = logging.getLogger('alembic.env')
+# DO NOT ENABLE THE BELOW LOGGING
+# Enabling logging from within Alembig breaks ARM logging in the UI
+# fileConfig(config.config_file_name,
+#            disable_existing_loggers=False)
+# logger = logging.getLogger('alembic.env')
 
 
 def get_engine():
-    try:
-        # this works with Flask-SQLAlchemy<3 and Alchemical
-        return current_app.extensions['migrate'].db.get_engine()
-    except (TypeError, AttributeError):
-        # this works with Flask-SQLAlchemy>=3
-        return current_app.extensions['migrate'].db.engine
-
+    # try:
+    #     # this works with Flask-SQLAlchemy<3 and Alchemical
+    #     return current_app.extensions['migrate'].db.get_engine()
+    # except (TypeError, AttributeError):
+    #     # this works with Flask-SQLAlchemy>=3
+    #     return current_app.extensions['migrate'].db.engine
+    return current_app.extensions['migrate'].db.engine
 
 def get_engine_url():
     try:
@@ -75,7 +78,7 @@ def run_migrations_offline():
 def run_migrations_online():
     """Run migrations in 'online' mode.
 
-    In this scenario we need to create an Engine
+    In this scenario, we need to create an Engine
     and associate a connection with the context.
 
     """

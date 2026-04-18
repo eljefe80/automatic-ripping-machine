@@ -6,13 +6,18 @@ import yaml
 
 import config.config_utils as config_utils
 
-CONFIG_LOCATION = "/etc/arm/config"
+CONFIG_LOCATION = "/arm/config"
+arm_code_path = "/opt/arm"
+comments_location = "/opt/arm/arm/ui/settings/comments.json"
 arm_config_path = os.path.join(CONFIG_LOCATION, "arm.yaml")
+arm_default_config_path = os.path.join(arm_code_path, "setup", "arm.yaml")
 abcde_config_path = os.path.join(CONFIG_LOCATION, "abcde.conf")
 apprise_config_path = os.path.join(CONFIG_LOCATION, "apprise.yaml")
+arm_default_apprise_path = os.path.join(arm_code_path, "setup", "apprise.yaml")
 
 
 def _load_config(fp):
+    print(f"Loading config from {fp}")
     with open(fp, "r") as yaml_file:
         config = yaml.safe_load(yaml_file)
     return config
@@ -28,7 +33,7 @@ def _load_abcde(fp):
 # handle arm.yaml migration here
 # 1. Load both current and template arm.yaml
 cur_cfg = _load_config(arm_config_path)
-new_cfg = _load_config("/opt/arm/setup/arm.yaml")
+new_cfg = _load_config(arm_default_config_path)
 
 # 2. If the dicts do not have the same number of keys
 if len(cur_cfg) != len(new_cfg):
@@ -38,7 +43,7 @@ if len(cur_cfg) != len(new_cfg):
             new_cfg[key] = cur_cfg[key]
 
     # 4. Save the dictionary
-    with open("/arm/app/comments.json", "r") as comments_file:
+    with open(comments_location, "r") as comments_file:
         comments = json.load(comments_file)
 
     arm_cfg = comments['ARM_CFG_GROUPS']['BEGIN'] + "\n\n"
@@ -65,9 +70,6 @@ if len(cur_cfg) != len(new_cfg):
         settings_file.close()
 
 arm_config = _load_config(arm_config_path)
-
-# abcde config file, open and read contents
-abcde_config = _load_abcde(abcde_config_path)
 
 # apprise config, open and read yaml contents
 apprise_config = _load_config(apprise_config_path)

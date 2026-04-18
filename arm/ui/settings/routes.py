@@ -3,26 +3,28 @@ Automatic Ripping Machine - User Interface (UI) - Blueprint
     Settings
 
 Covers
-    - settings [GET]
-    - save_settings [POST]
-    - save_ui_settings [POST]
-    - save_abcde_settings [POST]
-    - save_apprise_cfg [POST]
-    - systeminfo [POST]
-    - systemdrivescan [GET]
-    - update_arm [POST]
-    - drive_eject [GET]
-    - testapprise [GET]
+- settings [GET]
+- save_settings [POST]
+- save_ui_settings [POST]
+- save_abcde_settings [POST]
+- save_apprise_cfg [POST]
+- systeminfo [POST]
+- systemdrivescan [GET]
+- update_arm [POST]
+- drive_eject [GET]
+- drive_remove [GET]
+- testapprise [GET]
 """
-import os
 import platform
 import importlib
-import re
 import subprocess
 from flask_login import login_required
 from flask import render_template, request, flash, redirect, session
 from flask import current_app as app
+from datetime import datetime
+import logging
 
+from ui import page_settings, redirect_settings
 from ui.settings import route_settings
 from ui.settings import utils
 from ui import db
@@ -33,13 +35,27 @@ from models.ui_settings import UISettings
 import config.config as cfg
 from ui.settings import DriveUtils
 from ui.settings.forms import SettingsForm, UiSettingsForm, AbcdeForm, SystemInfoDrives
-from ui.settings.ServerUtil import ServerUtil
+from ui.settings.utils import check_hw_transcode_support
 from ui.notifications.utils import notify
 
 
-# Page definitions
-page_settings = "settings.html"
-redirect_settings = "/settings"
+@route_settings.route('/debug_logging')
+def debug_logging():
+    # Check Flask logger handlers
+    flask_logger = app.logger
+    custom_logger = logging.getLogger(__name__)
+
+    def log_debug_info(logger, name):
+        handler_info = [
+            f"{type(h).__name__} -> {getattr(h, 'baseFilename', 'No File')}"
+            for h in logger.handlers
+        ]
+        return f"{name} | Handlers: {handler_info}"
+
+    return f"""
+    Flask Logger: {log_debug_info(flask_logger, 'Flask Logger')}<br>
+    Custom Logger: {log_debug_info(custom_logger, 'Custom Logger')}
+    """
 
 
 @route_settings.route('/settings')
@@ -51,17 +67,9 @@ def settings():
     Overview - allows the user to update the all configs of A.R.M without
     needing to open a text editor
     """
-    global page_settings
 
-    # stats for info page
-    version = "Unknown"
-    try:
-        with open(os.path.join(cfg.arm_config["INSTALLPATH"], 'VERSION')) as version_file:
-            version = version_file.read().strip()
-    except FileNotFoundError as e:
-        app.logger.debug(f"Error - ARM Version file not found: {e}")
-    except IOError as e:
-        app.logger.debug(f"Error - ARM Version file error: {e}")
+    session["page_title"] = "Settings"
+
     failed_rips = Job.query.filter_by(status="fail").count()
     total_rips = Job.query.filter_by().count()
     movies = Job.query.filter_by(video_type="movie").count()
@@ -69,9 +77,19 @@ def settings():
     cds = Job.query.filter_by(disctype="music").count()
     git_hash = utils.get_git_revision_hash()
 
-    stats = {'python_version': platform.python_version(),
-             'arm_version': version,
-             'git_commit': git_hash,
+    # Get the current server time and timezone
+    current_time = datetime.now()
+    server_datetime = current_time.strftime(cfg.arm_config['DATE_FORMAT'])
+    server_timezone = current_time.astimezone().tzinfo
+    [arm_version_local, arm_version_remote] = utils.git_check_version()
+    local_git_hash = utils.get_git_revision_hash()
+
+    stats = {'server_datetime': server_datetime,
+             'server_timezone': server_timezone,
+             'python_version': platform.python_version(),
+             'arm_version_local': arm_version_local,
+             'arm_version_remote': arm_version_remote,
+             'git_commit': local_git_hash,
              'movies_ripped': movies,
              'series_ripped': series,
              'cds_ripped': cds,
@@ -84,23 +102,20 @@ def settings():
     # ARM UI config
     armui_cfg = UISettings.query.filter_by().first()
 
-    # System details in class server
-    server = SystemInfo.query.filter_by().first()
-    serverutil = ServerUtil()
+    # Load each of the ARM Server details
+    arm_servers = SystemInfo.query.filter_by().all()
 
     # System details in class server
     arm_path = cfg.arm_config['TRANSCODE_PATH']
     media_path = cfg.arm_config['COMPLETED_PATH']
 
-    # System Drives (CD/DVD/Blueray drives)
-    # form_drive = SystemInfoDrives(request.form)
+    # System Drives (CD/DVD/Blu-ray drives)
     drives = DriveUtils.drives_check_status()
+    form_drive = SystemInfoDrives(request.form)
 
     # Load up the comments.json, so we can comment the arm.yaml
     comments = utils.generate_comments()
     form = SettingsForm()
-
-    session["page_title"] = "Settings"
 
     return render_template(page_settings,
                            settings=cfg.arm_config,
@@ -109,47 +124,11 @@ def settings():
                            apprise_cfg=cfg.apprise_config,
                            form=form,
                            jsoncomments=comments,
-                           abcde_cfg=cfg.abcde_config,
-                           server=server,
-                           serverutil=serverutil,
+                           arm_servers=arm_servers,
                            arm_path=arm_path,
                            media_path=media_path,
                            drives=drives,
-                           form_drive=False)
-
-
-def check_hw_transcode_support():
-    cmd = f"nice {cfg.arm_config['HANDBRAKE_CLI']}"
-
-    app.logger.debug(f"Sending command: {cmd}")
-    hw_support_status = {
-        "nvidia": False,
-        "intel": False,
-        "amd": False
-    }
-    try:
-        hand_brake_output = subprocess.run(f"{cmd}", capture_output=True, shell=True, check=True)
-
-        # NVENC
-        if re.search(r'nvenc: version ([0-9\\.]+) is available', str(hand_brake_output.stderr)):
-            app.logger.info("NVENC supported!")
-            hw_support_status["nvidia"] = True
-        # Intel QuickSync
-        if re.search(r'qsv:\sis(.*?)available\son', str(hand_brake_output.stderr)):
-            app.logger.info("Intel QuickSync supported!")
-            hw_support_status["intel"] = True
-        # AMD VCN
-        if re.search(r'vcn:\sis(.*?)available\son', str(hand_brake_output.stderr)):
-            app.logger.info("AMD VCN supported!")
-            hw_support_status["amd"] = True
-        app.logger.info("Handbrake call successful")
-        # Dump the whole CompletedProcess object
-        app.logger.debug(hand_brake_output)
-    except subprocess.CalledProcessError as hb_error:
-        err = f"Call to handbrake failed with code: {hb_error.returncode}({hb_error.output})"
-        app.logger.error(err)
-
-    return hw_support_status
+                           form_drive=form_drive)
 
 
 @route_settings.route('/save_settings', methods=['POST'])
@@ -302,21 +281,25 @@ def server_info():
     Method - POST
     Overview - Save 'System Info' page settings to a database, Not a user page
     """
-    global redirect_settings
 
-    # System Drives (CD/DVD/Blueray drives)
+    # System Drives (CD/DVD/Blu-ray drives)
     form_drive = SystemInfoDrives(request.form)
     if request.method == 'POST' and form_drive.validate():
         # Return for POST
         app.logger.debug(
-            "Drive id: " + str(form_drive.id.data) +
-            " Updated db description: " + form_drive.description.data)
+            f"Drive id: {str(form_drive.id.data)} " +
+            f"Updated name: [{str(form_drive.name.data)}] " +
+            f"Updated description: [{str(form_drive.description.data)}]")
         drive = SystemDrives.query.filter_by(drive_id=form_drive.id.data).first()
+        drive.name = str(form_drive.name.data).strip()
         drive.description = str(form_drive.description.data).strip()
+        drive.drive_mode = str(form_drive.drive_mode.data).strip()
         db.session.commit()
+        flash(f"Updated Drive {drive.mount} details", "success")
         # Return to systeminfo page (refresh page)
         return redirect(redirect_settings)
     else:
+        flash("Error: Unable to update drive details", "error")
         # Return for GET
         return redirect(redirect_settings)
 
@@ -328,33 +311,81 @@ def system_drive_scan():
     Method - GET
     Overview - Scan for the system drives and update the database.
     """
-    global redirect_settings
+
     # Update to scan for changes to the ARM system
     new_count = DriveUtils.drives_update()
     flash(f"ARM found {new_count} new drives", "success")
     return redirect(redirect_settings)
 
 
-@route_settings.route('/update_arm', methods=['POST'])
+@route_settings.route('/drive/eject/<eject_id>')
 @login_required
-def update_git():
+def drive_eject(eject_id):
     """
-    Update arm via git command line
+    Server System - change state of CD/DVD/Blu-ray drive - toggle ejecting
     """
-    return utils.git_get_updates()
 
-
-@route_settings.route('/driveeject/<id>')
-@login_required
-def drive_eject(id):
-    """
-    Server System  - change state of CD/DVD/BluRay drive - toggle eject
-    """
-    global redirect_settings
-    drive = SystemDrives.query.filter_by(drive_id=id).first()
+    drive = SystemDrives.query.filter_by(drive_id=eject_id).first()
     drive.open_close()
     db.session.commit()
     return redirect(redirect_settings)
+
+
+@route_settings.route('/drive/remove/<remove_id>')
+@login_required
+def drive_remove(remove_id):
+    """
+    Server System - remove a drive from the ARM UI
+    """
+
+    try:
+        app.logger.debug(f"Removing drive {remove_id}")
+        drive = SystemDrives.query.filter_by(drive_id=remove_id).first()
+        dev_path = drive.mount
+        SystemDrives.query.filter_by(drive_id=remove_id).delete()
+        db.session.commit()
+        flash(f"Removed drive [{dev_path}] from ARM", "success")
+    except Exception as e:
+        app.logger.error(f"Drive removal encountered an error: {e}")
+        flash("Drive unable to be removed, check logs for error", "error")
+    return redirect(redirect_settings)
+
+
+@route_settings.route('/drive/manual/<manual_id>')
+@login_required
+def drive_manual(manual_id):
+    """
+    Manually start a job on ARM
+    """
+
+    drive = SystemDrives.query.filter_by(drive_id=manual_id).first()
+    dev_path = drive.mount.lstrip('/dev/')
+
+    cmd = f"/opt/arm/scripts/docker/docker_arm_wrapper.sh {dev_path}"
+    app.logger.debug(f"Running command[{cmd}]")
+
+    # Manually start ARM if the udev rules are not working for some reason
+    try:
+        manual_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        stdout, stderr = manual_process.communicate()
+
+        if manual_process.returncode != 0:
+            raise subprocess.CalledProcessError(manual_process.returncode, cmd, output=stdout, stderr=stderr)
+
+        message = f"Manually starting a job on Drive: '{drive.name}'"
+        status = "success"
+        app.logger.debug(stdout)
+
+    except subprocess.CalledProcessError as e:
+        message = f"Failed to start a job on Drive: '{drive.name}' See logs for info"
+        status = "danger"
+        app.logger.error(message)
+        app.logger.error(f"error: {e}")
+        app.logger.error(f"stdout: {e.output}")
+        app.logger.error(f"stderr: {e.stderr}")
+
+    flash(message, status)
+    return redirect('/settings')
 
 
 @route_settings.route('/testapprise')
@@ -364,7 +395,7 @@ def testapprise():
     Method - GET
     Overview - Send a test notification to Apprise.
     """
-    global redirect_settings
+
     # Send a sample notification
     message = "This is a notification by the ARM-Notification Test!"
     if cfg.arm_config["UI_BASE_URL"] and cfg.arm_config["WEBSERVER_PORT"]:

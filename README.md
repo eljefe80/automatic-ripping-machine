@@ -13,7 +13,7 @@
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/automatic-ripping-machine/automatic-ripping-machine?label=Latest%20Stable%20Version)](https://github.com/automatic-ripping-machine/automatic-ripping-machine/releases)
 [![GitHub release Date](https://img.shields.io/github/release-date/automatic-ripping-machine/automatic-ripping-machine?label=Latest%20Stable%20Released)](https://github.com/automatic-ripping-machine/automatic-ripping-machine/releases)
-![Python Versions](https://img.shields.io/badge/Python_Versions-3.8_|_3.9_|_3.10_|_3.11-blue?logo=python)
+![Python Versions](https://img.shields.io/badge/Python_Versions-3.9_|_3.10_|_3.11_|_3.12-blue?logo=python)
 
 
 
@@ -24,14 +24,12 @@
 
 ## ARM Development Branch
 
-**- - - - WARNING - - - -**
-
-This is the ARM Development Branch for v3.x.
-This software is not stable and not ready for production roll out.
-
-Current development status can be found in the [Development Branch](https://github.com/automatic-ripping-machine/automatic-ripping-machine/wiki/Development-Branch)
-
-This Development branch is working on the current ARM [Roadmap](https://github.com/automatic-ripping-machine/automatic-ripping-machine/wiki/Status-Roadmap.md)
+> [!WARNING]
+> 
+> This is the ARM Development Branch for v3.x.
+> This software is not stable and not ready for production roll out.
+> Current development status can be found in the [Development Branch](https://github.com/automatic-ripping-machine/automatic-ripping-machine/wiki/Development-Branch)
+> This Development branch is working on the current ARM [Roadmap](https://github.com/automatic-ripping-machine/automatic-ripping-machine/wiki/Status-Roadmap)
 
 ---
 

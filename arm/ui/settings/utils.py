@@ -7,6 +7,7 @@ Functions
     - git_check_updates - check for updates from git repository
     - generate_comments - generate comments about changes in git repository
     - build_arm_cfg - build ARM configuration
+    - check_hw_transcode_support
 """
 import os
 import json
@@ -26,36 +27,89 @@ def get_git_revision_hash() -> str:
     try:
         git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'],
                                            cwd=cfg.arm_config['INSTALLPATH']).decode('ascii').strip()
-        # Trunkate to seven characters (aligns with the github commit values reported)
+        # Trunkate to seven characters (aligns with the GitHub commit values reported)
         git_hash = git_hash[:7]
         app.logger.debug(f"GIT revision: {git_hash}")
-    except subprocess.CalledProcessError as e:
-        app.logger.debug(f"GIT revision error: {e}")
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        git_hash = 'unknown'
+        app.logger.error(f"GIT revision error: {e}")
+        if isinstance(e, FileNotFoundError):
+            app.logger.error("Git is not installed or not found in PATH.")
 
     return git_hash
+
+
+def git_check_version():
+    """
+    Check the current ARM version locally against the remote (GitHub) version.
+
+    This function compares the installed ARM version with the latest version available
+    in the remote GitHub repository.
+
+    :return:
+        tuple: (local_version, remote_version)
+            - local_version (str): The version currently installed locally (from the VERSION file).
+            - remote_version (str): The latest version available in the remote repository.
+    """
+
+    install_path = cfg.arm_config['INSTALLPATH']
+
+    # Read the local version from the VERSION file
+    version_file_path = os.path.join(install_path, 'VERSION')
+    try:
+        with open(version_file_path) as version_file:
+            local_version = version_file.read().strip()
+    except FileNotFoundError as e:
+        app.logger.debug(f"Error - ARM Local Version file not found: {e}")
+    except IOError as e:
+        app.logger.debug(f"Error - ARM Local Version file error: {e}")
+
+    # Read the remote version from Git (without modifying local files)
+    try:
+        remote_version = subprocess.check_output(
+            'git show origin/HEAD:VERSION', shell=True, cwd=install_path
+        ).decode('ascii').strip()
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        app.logger.error(f"GIT revision error: {e}")
+        if isinstance(e, FileNotFoundError):
+            app.logger.error("Git is not installed or not found in PATH.")
+        remote_version = "Unknown"
+
+    app.logger.debug(f"Local version: {local_version}")
+    app.logger.debug(f"Remote version: {remote_version}")
+
+    return local_version, remote_version
 
 
 def git_check_updates(current_hash) -> bool:
     """
     Check if we are on the latest commit
     """
-    git_update = subprocess.run(['git', 'fetch',
-                                 'https://github.com/automatic-ripping-machine/automatic-ripping-machine'],
-                                cwd=cfg.arm_config['INSTALLPATH'], check=False)
-    git_log = subprocess.check_output('git for-each-ref refs/remotes/origin --sort="-committerdate" | head -1',
-                                      shell=True, cwd="/opt/arm").decode('ascii').strip()
-    app.logger.debug(git_update.returncode)
-    app.logger.debug(git_log)
-    app.logger.debug(current_hash)
-    app.logger.debug(bool(re.search(rf"\A{current_hash}", git_log)))
-    return bool(re.search(rf"\A{current_hash}", git_log))
+    if current_hash == 'unknown':
+        try:
+            git_update = subprocess.run(['git', 'fetch',
+                                         'https://github.com/automatic-ripping-machine/automatic-ripping-machine'],
+                                        cwd=cfg.arm_config['INSTALLPATH'], check=False)
+            git_log = subprocess.check_output('git for-each-ref refs/remotes/origin --sort="-committerdate" | head -1',
+                                              shell=True, cwd="/opt/arm").decode('ascii').strip()
+            app.logger.debug(git_update.returncode)
+            app.logger.debug(git_log)
+            app.logger.debug(current_hash)
+            app.logger.debug(bool(re.search(rf"\A{current_hash}", git_log)))
+            return bool(re.search(rf"\A{current_hash}", git_log))
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            app.logger.error(f"Error in getting git info: {e}")
+            return True
+    else:
+        app.logger.error("Unable to check if we are on the latest commit")
+        return True
 
 
 def generate_comments():
     """
     load comments.json and use it for settings page
     allows us to easily add more settings later
-    :return: json
+    :return: JSON
     """
     comments_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "comments.json")
     try:
@@ -136,3 +190,37 @@ def git_get_updates() -> dict:
     git_log = subprocess.run(['git', 'pull'], cwd=cfg.arm_config['INSTALLPATH'], check=False)
     return {'stdout': git_log.stdout, 'stderr': git_log.stderr,
             'return_code': git_log.returncode, 'form': 'ARM Update', "success": (git_log.returncode == 0)}
+
+
+def check_hw_transcode_support():
+    cmd = f"nice {cfg.arm_config['HANDBRAKE_CLI']}"
+
+    app.logger.debug(f"Sending command: {cmd}")
+    hw_support_status = {
+        "nvidia": False,
+        "intel": False,
+        "amd": False
+    }
+    try:
+        hand_brake_output = subprocess.run(f"{cmd}", capture_output=True, shell=True, check=True)
+
+        # NVENC
+        if re.search(r'nvenc: version ([0-9\\.]+) is available', str(hand_brake_output.stderr)):
+            app.logger.info("NVENC supported!")
+            hw_support_status["nvidia"] = True
+        # Intel QuickSync
+        if re.search(r'qsv:\sis(.*?)available\son', str(hand_brake_output.stderr)):
+            app.logger.info("Intel QuickSync supported!")
+            hw_support_status["intel"] = True
+        # AMD VCN
+        if re.search(r'vcn:\sis(.*?)available\son', str(hand_brake_output.stderr)):
+            app.logger.info("AMD VCN supported!")
+            hw_support_status["amd"] = True
+        app.logger.info("Handbrake call successful")
+        # Dump the whole CompletedProcess object
+        app.logger.debug(hand_brake_output)
+    except subprocess.CalledProcessError as hb_error:
+        err = f"Call to handbrake failed with code: {hb_error.returncode}({hb_error.output})"
+        app.logger.error(err)
+
+    return hw_support_status

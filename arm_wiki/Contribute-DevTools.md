@@ -3,78 +3,53 @@ To support development of ARM, some of the more tedious and repetitious developm
 
 To run devtools, navigate to the arm devtools folder and run the python file, armdevtools.py.
 
-_Note: if the file is not executable, run `chown u+x armdevtools.py`_
+Running the script requires:
+- File set to executable; and
+- Python virtual environment setup, see [Python Docs - Creation of virtual environments](https://docs.python.org/3/library/venv.html)
 
-`cd devtools`
+> [!IMPORTANT]
+> Executing any docker scripts requires docker permissions, otherwise the scripts will fail
 
 ## Running devtools
+There are various commands available to aid in development, testing and preperation ahead of merging code into ARM.
 
-There are various commands available to the developer, as detailed below. The general output from the devtools follows:
-
-```
-INFO: <detail of the command being run>
-INFO: Going to stop ARMUI - requesting sudo <requested to stop any ARM UI currently running>
-INFO: ARM UI stopped    [Ok]
-INFO: -------------------------------------
-INFO: <command(s) the script runs>
-INFO: <Script status on running the command_     [Ok]
-INFO: -------------------------------------
-INFO: <command(s) the script runs>
-INFO: <Script status on running the command>     [Ok]
-INFO: Going to restart ARMUI - requesting sudo _requested to restart the ARM UI_
-INFO: ARM UI started    [Ok]
-```
 
 ### [-h] Help
 The below shows the list of available commands devtools provides.
 
-```
-./armdevtools.py -h
-usage: armdevtools.py [-h] [-b B] [-dr DR] [-db_rem] [-qa] [-pr] [-v]
+```bash
+$ ./armdevtools.py -h
+usage: armdevtools.py [-h] [-dr DR] [--clean] [-dc] [--monitor] [-qa] [-pr] [-test_ui] [-v]
 
-Automatic Ripping Machine Development Tool Scripts
+Automatic Ripping Machine Development Tool Scripts. Note: scripts assume running on a bare metal server when running, unless running the specific docker rebuild
+scripts.
 
 options:
   -h, --help  show this help message and exit
-  -b B        Name of the branch to move to, example -b v2_devel
-  -dr DR      Docker rebuild post ARM code update. Requires docker run script path to run.
-  -db_rem     Database tool - remove current arm.db file
+  -dr DR      Docker - Stop, Remove and Rebuild the ARM Docker image, leaving the container
+  --clean     Docker - Remove all ARM docker images and containers before rebuilding.
+  -dc         Docker-Compose - Remove all ARM docker images using docker-compose, rebuild and start ARM.
+  --monitor   Docker-Compose - Set the '-d' status, calling --monitor will not set '-d' and docker will output all text to the console.
   -qa         QA Checks - run Flake8 against ARM
   -pr         Actions to run prior to committing a PR against ARM on github
+  -test_ui    Test ARM UI - run pytest against test_ui folder (auto-starts developer db)
   -v          ARM Dev Tools Version
 ```
 
-### [-b B] Git branch change
-Running this command provides a simple way to stop the ARM UI (if running on bare metal) and checkout a new branch. Whilst checking out a new git branch is a simple task, if the current ARM UI is not stopped prior to changing branches, strange things can occur. This script automates the change and aims to prevent spooky action at a distance.
-
-```
-./armdevtools.py -b v2_devel
-INFO: Change the current git branch to - v2_devel
-INFO: Going to stop ARMUI - requesting sudo
-INFO: ARM UI stopped    [Ok]
-M       arm-dependencies
-Branch 'v2_devel' set up to track remote branch 'v2_devel' from 'origin'.
-Switched to a new branch 'v2_devel'
-INFO: ARM branch: v2_devel checked out
-INFO: Going to restart ARMUI - requesting sudo
-INFO: ARM UI started    [Ok]
-```
 
 ### [-dr DR] Docker Rebuild
-Following any code changes to ARM, testing the changes in the docker image can be a tedious process. This command automates some of the process to make that change easier. To run this command, a bash script needs to be provided that will, when run will create the ARM docker image. For more details on the docker run configuration, refer to [Building ARM docker image from source](https://github.com/automatic-ripping-machine/automatic-ripping-machine/wiki/Building-ARM-docker-image-from-source)
-
-_Note: executing this script requires docker permissions, otherwise it will fail._
+Following any code changes to ARM, testing the changes in the docker image can be a tedious process.
+This command automates some of the process to make that change easier.
+To run, pass the configuration file `start_arm_container.sh` to configure the docker run.
 
 Running this command executes the following docker commands.
 1. Stops the ARM container
 2. Removes the ARM container
 3. Rebuilds the ARM container
-4. Starts the ARM container, using the provided bash file/script
+4. Starts the ARM container, using the provided arm configuration `start_arm_container.sh`
 
-```
-./armdevtools.py -dr /home/arm/armdocker.bash 
-INFO: Going to stop ARMUI - requesting sudo
-INFO: ARM UI stopped    [Ok]
+```bash
+./armdevtools.py -dr ~/start_arm_container.sh
 INFO: Rebuilding docker image post ARM update
 INFO: -------------------------------------
 INFO: Executing: docker stop automatic-ripping-machine
@@ -90,8 +65,6 @@ Sending build context to Docker daemon   34.2MB
 Step 1/21 : FROM automaticrippingmachine/arm-dependencies:1.1.1 AS base
  ---> 601d89529745
 ...
-steps removed to reduce wiki size
-...
 Step 21/21 : WORKDIR /home/arm
  ---> Running in 6ed2590d5d46
 Removing intermediate container 6ed2590d5d46
@@ -103,26 +76,30 @@ INFO: -------------------------------------
 INFO: Executing: /home/arm/armdocker.bash
 ec1f1c857f498c16f5149efaf305ed78828247577dd2c637c4c2bfd81525a449
 INFO: ARM Docker container running      [Ok]
-INFO: Going to restart ARMUI - requesting sudo
-INFO: ARM UI started    [Ok]
 ```
 
-### [-db_rem] Remove ARM Database
-During development, there may come a time when testing requires removing the ARM database to confirm functionality and graceful exit states when no database exists. Whilst a simple command to remove the database, removing whilst ARM is running is not a good idea, again the whole spooky action at a distance. This command handles stopping the UI, removing the database and starting the UI again.
 
-_Note: This command won't stop a docker container, and removing the ARM.db file whilst running is not a good idea._
+### [-dr DR --clean] Docker Clean
+Runs the below, prior to then building the image as above.
 
-_Note 2: Removing the arm.db file requires the user running the script to have ownership of the file, otherwise the script will fail._
-
+```bash
+docker image rm automatic-ripping-machine
 ```
-./armdevtools.py -db_rem
-INFO: Removing the ARM DB file
-INFO: Going to stop ARMUI - requesting sudo
-INFO: ARM UI stopped    [Ok]
-INFO: ARM DB /home/arm/db/arm.db removed        [Ok]
-INFO: Going to restart ARMUI - requesting sudo
-INFO: ARM UI started    [Ok]
-```
+
+
+### [-dc ] Docker Compose
+Build ARM using the `docker-compose.yml` configuration.
+
+Running this command executes the following docker commands.
+1. Stops the ARM container
+2. Removes the ARM container
+3. Rebuilds the ARM container
+4. Starts the ARM container
+
+
+### [-dc --monitor] Docker Compose
+Runs docker compose without putting to the background via `-d` and will output runtime operations to console.
+Useful when debugging rebuilds.
 
 
 ### [-qa] Run Flake8 Check
@@ -132,7 +109,9 @@ Running the qa check executes the below command, and if all is good will return 
 
 `flake8 /opt/arm/arm --max-complexity=15 --max-line-length=120 --show-source --statistics`
 
-```
+*Example Test - Passing*
+
+```bash
 ./armdevtools.py -qa
 INFO: Going to stop ARMUI - requesting sudo
 INFO: ARM UI stopped    [Ok]
@@ -144,12 +123,35 @@ INFO: Going to restart ARMUI - requesting sudo
 INFO: ARM UI started    [Ok]
 ```
 
+*Example Test - Failing*
+
+```bash
+$ ./armdevtools.py -qa
+INFO: Running quality checks against ARM - /opt/arm
+INFO: -------------------------------------
+INFO: Executing: /opt/arm/.venv/bin/python -m flake8 /opt/arm/arm --max-complexity=15 --max-line-length=120 --show-source --statistics
+/opt/arm/arm/ui/__init__.py:24:1: E302 expected 2 blank lines, found 1
+def create_app(config_name=os.getenv("FLASK_ENV", "production")):
+^
+1     E302 expected 2 blank lines, found 1
+ERROR: Command [/opt/arm/.venv/bin/python -m flake8 /opt/arm/arm --max-complexity=15 --max-line-length=120 --show-source --statistics] failed with exit code 1  [Error]
+INFO: -------------------------------------
+INFO: Executing: /opt/arm/.venv/bin/python -m flake8 /opt/arm/test_ripper --max-complexity=15 --max-line-length=120 --show-source --statistics
+INFO: ARM QA check completed against /opt/arm/test_ripper       [Ok]
+INFO: -------------------------------------
+INFO: Executing: /opt/arm/.venv/bin/python -m flake8 /opt/arm/test_ui --max-complexity=15 --max-line-length=120 --show-source --statistics
+INFO: ARM QA check completed against /opt/arm/test_ui   [Ok]
+INFO: -------------------------------------
+INFO: Executing: /opt/arm/.venv/bin/python -m flake8 /opt/arm/devtools --max-complexity=15 --max-line-length=120 --show-source --statistics
+INFO: ARM QA check completed against /opt/arm/devtools  [Ok]
+```
+
 ### [-pr] Pre-PR Actions
 Executes a list of actions required to bring any ARM code up to scratch prior to raising a new PR.
 Currently this runs:
 - Update Git submodule (ARM dependencies)
 
-```
+```bash
 ./armdevtools.py -pr
 INFO: Going to stop ARMUI - requesting sudo
 INFO: ARM UI stopped    [Ok]
@@ -171,9 +173,79 @@ INFO: Going to restart ARMUI - requesting sudo
 INFO: ARM UI started    [Ok]
 ```
 
+### [-test_ui] ARM Test User Interface
+Runs the ARM User Interface (UI) unit tests against the code.
+Requires:
+- `arm-db-test` running and `arm-db` stopped [handled by script]
+- pytest installed
+
+```bash
+$ pip3 install -r requirements_ui.txt
+```
+
+*Example Passing Test*
+
+```bash
+$ ./devtools/armdevtools.py -test_ui
+INFO: -------------------------------------
+INFO: Executing: docker compose stop arm-db
+[+] Stopping 1/1
+ ✔ Container arm-db  Stopped                                                                                                                                    0.0s
+INFO: Stopped ARM main DB       [Ok]
+INFO: -------------------------------------
+INFO: Executing: docker compose start arm-db-test
+INFO: Started ARM test DB       [Ok]
+INFO: -------------------------------------
+INFO: Executing: /opt/arm/.venv/bin/python -m pytest test_ui --maxfail=1 -v
+======================================================================== test session starts ========================================================================
+platform linux -- Python 3.12.3, pytest-8.1.1, pluggy-1.6.0 -- /opt/arm/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /opt/arm
+collected 16 items
+
+test_ui/test_bp_errors.py::test_errors_404 PASSED                                                                                                             [  6%]
+test_ui/test_bp_errors.py::test_errors_500 PASSED                                                                                                             [ 12%]
+test_ui/test_model_alembic_version.py::test_query_alembic_version PASSED                                                                                      [ 18%]
+test_ui/test_model_config.py::test_create_config PASSED                                                                                                       [ 25%]
+test_ui/test_model_config.py::test_query_config PASSED                                                                                                        [ 31%]
+test_ui/test_model_job.py::test_create_job PASSED                                                                                                             [ 37%]
+test_ui/test_model_job.py::test_job_attributes PASSED                                                                                                         [ 43%]
+test_ui/test_model_notifications.py::test_create_notifications PASSED                                                                                         [ 50%]
+test_ui/test_model_notifications.py::test_query_notifications PASSED                                                                                          [ 56%]
+test_ui/test_model_system_drives.py::test_create_system_drives PASSED                                                                                         [ 62%]
+test_ui/test_model_system_drives.py::test_query_system_drives PASSED                                                                                          [ 68%]
+test_ui/test_model_system_info.py::test_create_system_info PASSED                                                                                             [ 75%]
+test_ui/test_model_system_info.py::test_query_system_info PASSED                                                                                              [ 81%]
+test_ui/test_model_ui_settings.py::test_query_ui_settings PASSED                                                                                              [ 87%]
+test_ui/test_model_user.py::test_create_user PASSED                                                                                                           [ 93%]
+test_ui/test_model_user.py::test_query_user PASSED                                                                                                            [100%]
+
+========================================================================= warnings summary ==========================================================================
+test_ui/test_model_system_info.py::test_create_system_info
+test_ui/test_model_system_info.py::test_query_system_info
+  /opt/arm/test_ui/test_model_system_info.py:62: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    system_info.last_update_time = datetime.datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================================================== 16 passed, 2 warnings in 0.90s ===================================================================
+INFO: Test executed for ARM UI  [Ok]
+INFO: -------------------------------------
+INFO: Executing: docker compose stop arm-db-test
+[+] Stopping 1/1
+ ✔ Container arm-db-test  Stopped                                                                                                                               0.8s
+INFO: Stopped ARM test DB       [Ok]
+INFO: -------------------------------------
+INFO: Executing: docker compose start arm-db
+[+] Running 1/1
+ ✔ Container arm-db  Started                                                                                                                                    0.1s
+INFO: Restarted ARM main DB     [Ok]
+
+```
+
 ### [-v] Devtools version
 Reports the current version of devtools
-```
-./armdevtools.py -v
-armdevtools.py 0.2
+
+```bash
+$ ./armdevtools.py -v
+Automatic Ripping Machine (ARM) - armdevtools.py [0.5]
 ```
