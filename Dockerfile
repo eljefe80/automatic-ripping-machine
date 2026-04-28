@@ -1,10 +1,10 @@
 ###########################################################
 # setup default directories and configs
-FROM automaticrippingmachine/arm-dependencies:1.7.3 AS base
+FROM ghcr.io/eljefe80/arm-dependencies:latest AS base
 
-LABEL org.opencontainers.image.source=https://github.com/automatic-ripping-machine/automatic-ripping-machine
+LABEL org.opencontainers.image.source=https://github.com/eljefe80/automatic-ripping-machine
 LABEL org.opencontainers.image.license=MIT
-LABEL org.opencontainers.image.description='Automatic Ripping Machine for fully automated Blu-ray, DVD and audio disc ripping.'
+LABEL org.opencontainers.image.description='Automatic Ripping Machine — eljefe80 fork with Intel QSV H.265 support'
 
 EXPOSE 8080
 
