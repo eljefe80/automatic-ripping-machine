@@ -114,6 +114,8 @@ def identify_bluray(job):
             bluray_title = str(job.label)
             bluray_title = bluray_title.replace('_', ' ')
             bluray_title = bluray_title.title()
+            # strip chars illegal in a folder name (incl. <>) from the raw label
+            bluray_title = utils.clean_for_filename(bluray_title)
             job.title = job.title_auto = bluray_title
             job.year = ""
             db.session.commit()
@@ -193,6 +195,10 @@ def identify_dvd(job):
     year = re.sub(r"\D", "", str(job.year)) if job.year else None
     # next line is not really needed, but we don't want to leave an x somewhere
     dvd_title = job.label.replace("16x9", "")
+    # Strip filesystem/markup-unsafe chars (e.g. angle brackets that some disc
+    # labels carry, like "<Spirit>") so they neither pollute the metadata lookup
+    # nor leak into the final folder name. Spaces are preserved for searching.
+    dvd_title = re.sub(r'[<>:"/\\|?*]', '', dvd_title)
     logging.debug(f"dvd_title ^a-z _-: {dvd_title}")
     # rip out any SKU's at the end of the line
     dvd_title = re.sub(r"SKU\b", "", dvd_title)
@@ -208,7 +214,8 @@ def identify_dvd(job):
         logging.debug("Cant connect to online service!")
     # Failsafe so that we always have a title.
     if job.title is None or job.title == "None":
-        job.title = str(job.label)
+        # clean_for_filename strips chars illegal in a folder name (incl. <>)
+        job.title = utils.clean_for_filename(str(job.label))
         job.year = None
 
     # Track 99 detection
