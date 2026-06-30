@@ -196,9 +196,11 @@ def identify_dvd(job):
     # next line is not really needed, but we don't want to leave an x somewhere
     dvd_title = job.label.replace("16x9", "")
     # Strip filesystem/markup-unsafe chars (e.g. angle brackets that some disc
-    # labels carry, like "<Spirit>") so they neither pollute the metadata lookup
-    # nor leak into the final folder name. Spaces are preserved for searching.
-    dvd_title = re.sub(r'[<>:"/\\|?*]', '', dvd_title)
+    # labels carry, like "<Youre_Next>") and treat underscores as word
+    # separators, so the metadata lookup searches "Youre Next" rather than the
+    # junk token "Youre_Next" (which fuzzy-matches the wrong film). Mirrors the
+    # underscore handling the Blu-ray path already does.
+    dvd_title = re.sub(r'[<>:"/\\|?*]', '', dvd_title).replace('_', ' ')
     logging.debug(f"dvd_title ^a-z _-: {dvd_title}")
     # rip out any SKU's at the end of the line
     dvd_title = re.sub(r"SKU\b", "", dvd_title)
