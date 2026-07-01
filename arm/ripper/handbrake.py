@@ -77,7 +77,7 @@ def build_handbrake_command(srcpath, filepathname, hb_preset, hb_args, logfile,
         cmd += f"-t {track_number} "
 
     cmd += f"{hb_args} " \
-           f">> {logfile} 2>&1"
+           f">> {shlex.quote(logfile)} 2>&1"
 
     return cmd
 

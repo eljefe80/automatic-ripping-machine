@@ -6,6 +6,7 @@ Also triggers CD identification
 # set up logging
 
 import os
+import re
 import logging
 import logging.handlers
 import time
@@ -36,7 +37,12 @@ def setup_job_log(job):
         else:
             valid_label = "no_label"
     else:
-        valid_label = job.label.replace("/", "_")
+        # This filename gets embedded unquoted into shell commands (HandBrake,
+        # abcde and dd redirect their output to it), so strip anything the shell
+        # would interpret. Some disc labels carry chars like <>&; e.g. a UDF
+        # label of "<Youre_Next>" produced ">> .../<Youre_Next>.log", which bash
+        # parsed as redirection and killed HandBrake with SIGPIPE.
+        valid_label = re.sub(r'[^\w.() -]', '', job.label).strip() or "no_label"
 
     log_file_name = f"{valid_label}.log"
     new_log_file = f"{valid_label}_{job.stage}.log"
